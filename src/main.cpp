@@ -251,8 +251,8 @@ void setup() {
 }
 
 /**
- * Averages out the value by applying quadratic weighted moving averages to the queue of values.
- * Does not modify the argument, instead returns the averaged value.
+ * Applies quadratic weighted moving averages to all values in the queue.
+ * Does not modify the queue, instead returns the average.
  */
 float averageVal(Queue<float> * q) {
     int beta = 0;
