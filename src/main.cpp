@@ -55,6 +55,9 @@ THE SOFTWARE.
     #include "Wire.h"
 #endif
 
+// #include "queue.c";
+#include "Queue.h";
+
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for SparkFun breakout and InvenSense evaluation board)
@@ -100,7 +103,9 @@ MPU6050 mpu;
 // more info, see: http://en.wikipedia.org/wiki/Gimbal_lock)
 // #define OUTPUT_READABLE_YAWPITCHROLL
 
-#define OUTPUT_CSV_YAWPITCHROLL
+// #define OUTPUT_CSV_YAWPITCHROLL
+
+#define OUTPUT_YAWPITCHROLL_SMOOTHED
 
 // uncomment "OUTPUT_READABLE_REALACCEL" if you want to see acceleration
 // components with gravity removed. This acceleration reference frame is
@@ -123,6 +128,7 @@ MPU6050 mpu;
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
+#define SMOOTHING_SAMPLE_SIZE 10 // The amount of 'roll' values that are remembered for smoothing
 bool blinkState = false;
 
 // MPU control/status vars
@@ -141,6 +147,7 @@ VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measure
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
+Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
 
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
@@ -243,11 +250,21 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
 }
 
-
-
-// ================================================================
-// ===                    MAIN PROGRAM LOOP                     ===
-// ================================================================
+/**
+ * Averages out the value by applying quadratic weighted moving averages to the queue of values.
+ * Does not modify the argument, instead returns the averaged value.
+ */
+float averageVal(Queue<float> * q) {
+    int beta = 0;
+    float total = 0;
+    int length =  (*q).count();
+    for (int i = 0; i < length; i++) {
+        int temp = (i+1) * (i+1);
+        beta += temp;
+        total += temp * (*q).findAt(i);
+    }
+    return total / beta;
+}
 
 void loop() {
     // if programming failed, don't try to do anything
@@ -344,6 +361,20 @@ void loop() {
             Serial.print(ypr[1] * 180/M_PI);
             Serial.print(", ");
             Serial.println(ypr[2] * 180/M_PI);
+        #endif
+
+        #ifdef OUTPUT_YAWPITCHROLL_SMOOTHED
+            mpu.dmpGetQuaternion(&q, fifoBuffer);
+            mpu.dmpGetGravity(&gravity, &q);
+            mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+            if (queue.count() == SMOOTHING_SAMPLE_SIZE) {
+                queue.pop();
+            }
+            queue.push(ypr[2]);
+            float avg = averageVal(&queue);
+            Serial.print(ypr[2] * 180/M_PI);
+            Serial.print(", avg: ");
+            Serial.println(avg * 180/M_PI);
         #endif
 
         #ifdef OUTPUT_READABLE_REALACCEL
