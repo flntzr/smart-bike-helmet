@@ -132,9 +132,14 @@ MPU6050 mpu;
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define SMOOTHING_SAMPLE_SIZE 15 // The amount of 'roll' values that are remembered for smoothing
 #define WARMUP_LENGTH 50 // the amount of initial measurements that are discarded to the sensor needing to adjust
-#define ACTIVITY_THRESHOLD 0.012
-#define GESTURE_THRESHOLD 0.5
+#define ACTIVITY_THRESHOLD 0.012 // The minimal absolute delta for a movement to be considered active.
+#define GESTURE_THRESHOLD 0.5 // The threshold for the likelihood to actually register it as a gesture.
+#define MIN_GESTURE_TIME_MS 1000 // the minimum time for a gesture to be detected. Blocks other gesture to be detected.
 enum { NONE, ROLL_LEFT, ROLL_RIGHT};
+struct Gesture {
+    uint8_t type;
+    unsigned long begin;
+};
 
 bool blinkState = false;
 
@@ -156,7 +161,9 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
 uint8_t warmupCountdown = WARMUP_LENGTH;
-uint8_t activity = NONE;
+Gesture gesture = {
+    type: NONE
+};
 
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
@@ -276,8 +283,7 @@ float getAverageVal(Queue<float> * q) {
 }
 
 /**
- * Tests if the given movement delta is considered being active. 
- * This is important for windowing movement activity.
+ * Tests if the given delta of movement measurements is considered being active. 
  */
 inline bool isActive(float delta) {
     return abs(delta) > ACTIVITY_THRESHOLD;
@@ -285,7 +291,7 @@ inline bool isActive(float delta) {
 
 /**
  * Returns a value indicating the likelihood of the movement being within an activaty window.
- * Additionally sets 'positive' according to the direction of the activity.
+ * Additionally sets 'positive' according to the direction of the gesture.
  */
 float getActivityLikelihood(Queue<float> * q, bool * positive) {
     int beta = 0;
@@ -308,11 +314,18 @@ float getActivityLikelihood(Queue<float> * q, bool * positive) {
 void updateActivity(Queue<float> * q) {
     boolean isPositive;
     float likelihood = getActivityLikelihood(q, &isPositive);
-    // Serial.println(likelihood);
-    if (activity == NONE && likelihood >= GESTURE_THRESHOLD) {
-        activity = isPositive ? ROLL_LEFT : ROLL_RIGHT;
-    } else if (activity != NONE && likelihood < GESTURE_THRESHOLD) {
-        activity = NONE;
+    unsigned long now = millis();
+    if ( gesture.type != NONE && (now - gesture.begin) < MIN_GESTURE_TIME_MS) {
+        // the gesture has not run for its minimum time so we do nothing
+        return;
+    }
+    if (gesture.type == NONE && likelihood >= GESTURE_THRESHOLD) {
+        // we detected a new gesture
+        gesture.type = isPositive ? ROLL_LEFT : ROLL_RIGHT;
+        gesture.begin = now;
+    } else if (gesture.type != NONE && likelihood < GESTURE_THRESHOLD) {
+        // a gesture has ended
+        gesture.type = NONE;
     }
 }
 
@@ -419,7 +432,7 @@ void loop() {
             // boolean positive;
             // float likelihood = getActivityLikelihood(&queue, &positive);
             updateActivity(&queue);
-            Serial.println(activity);
+            Serial.println(gesture.type);
             // Serial.println(ypr[2] * 180/M_PI);
             // Serial.print(", likelihood: ");
             // Serial.println(likelihood * 180/M_PI);
