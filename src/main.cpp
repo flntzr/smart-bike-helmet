@@ -130,8 +130,12 @@ MPU6050 mpu;
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
-#define SMOOTHING_SAMPLE_SIZE 10 // The amount of 'roll' values that are remembered for smoothing
+#define SMOOTHING_SAMPLE_SIZE 15 // The amount of 'roll' values that are remembered for smoothing
 #define WARMUP_LENGTH 50 // the amount of initial measurements that are discarded to the sensor needing to adjust
+#define ACTIVITY_THRESHOLD 0.012
+#define GESTURE_THRESHOLD 0.5
+enum { NONE, ROLL_LEFT, ROLL_RIGHT};
+
 bool blinkState = false;
 
 // MPU control/status vars
@@ -152,6 +156,7 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
 uint8_t warmupCountdown = WARMUP_LENGTH;
+uint8_t activity = NONE;
 
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
@@ -260,14 +265,14 @@ void setup() {
  */
 float getAverageVal(Queue<float> * q) {
     int beta = 0;
-    float total = 0;
+    float totalLikelihood = 0;
     int length =  (*q).count();
     for (int i = 0; i < length; i++) {
         int multiplier = (i+1) * (i+1);
         beta += multiplier;
-        total += multiplier * (*q).findAt(i);
+        totalLikelihood += multiplier * (*q).findAt(i);
     }
-    return total / beta;
+    return totalLikelihood / beta;
 }
 
 /**
@@ -275,27 +280,40 @@ float getAverageVal(Queue<float> * q) {
  * This is important for windowing movement activity.
  */
 inline bool isActive(float delta) {
-    return delta > 0.05;
+    return abs(delta) > ACTIVITY_THRESHOLD;
 }
 
 /**
  * Returns a value indicating the likelihood of the movement being within an activaty window.
+ * Additionally sets 'positive' according to the direction of the activity.
  */
-float getActivationLikelihood(Queue<float> * q) {
+float getActivityLikelihood(Queue<float> * q, bool * positive) {
     int beta = 0;
-    float total = 0;
+    float totalLikelihood = 0;
     int length = (*q).count();
+    float accumulatedDeltas = 0;
     for (int i = 0; i < length; i++) {
         int multiplier = (i+1) * (i+1);
         beta += multiplier;
         float cur = (*q).findAt(i);
         float prev = i == 0 ? cur : (*q).findAt(i - 1);
-        float delta = abs(cur - prev); 
-        bool active = isActive(delta);
-        int activationMultiplier = active ? 1 : 0;
-        total += multiplier * activationMultiplier;
+        float delta = cur - prev;
+        accumulatedDeltas += delta;
+        totalLikelihood += multiplier * isActive(delta);
     }
-    return total / beta;
+    *positive = accumulatedDeltas >= 0;
+    return totalLikelihood / beta;
+}
+
+void updateActivity(Queue<float> * q) {
+    boolean isPositive;
+    float likelihood = getActivityLikelihood(q, &isPositive);
+    // Serial.println(likelihood);
+    if (activity == NONE && likelihood >= GESTURE_THRESHOLD) {
+        activity = isPositive ? ROLL_LEFT : ROLL_RIGHT;
+    } else if (activity != NONE && likelihood < GESTURE_THRESHOLD) {
+        activity = NONE;
+    }
 }
 
 void loop() {
@@ -398,10 +416,13 @@ void loop() {
                 queue.pop();
             }
             queue.push(ypr[2]);
-            float likelihood = getActivationLikelihood(&queue);
-            Serial.print(ypr[2] * 180/M_PI);
-            Serial.print(", likelihood: ");
-            Serial.println(likelihood * 180/M_PI);
+            // boolean positive;
+            // float likelihood = getActivityLikelihood(&queue, &positive);
+            updateActivity(&queue);
+            Serial.println(activity);
+            // Serial.println(ypr[2] * 180/M_PI);
+            // Serial.print(", likelihood: ");
+            // Serial.println(likelihood * 180/M_PI);
         #endif
 
         #ifdef OUTPUT_READABLE_REALACCEL
