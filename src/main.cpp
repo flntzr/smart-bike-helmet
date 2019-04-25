@@ -131,6 +131,7 @@ MPU6050 mpu;
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define SMOOTHING_SAMPLE_SIZE 10 // The amount of 'roll' values that are remembered for smoothing
+#define WARMUP_LENGTH 50 // the amount of initial measurements that are discarded to the sensor needing to adjust
 bool blinkState = false;
 
 // MPU control/status vars
@@ -150,6 +151,7 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
+uint8_t warmupCountdown = WARMUP_LENGTH;
 
 // packet structure for InvenSense teapot demo
 uint8_t teapotPacket[14] = { '$', 0x02, 0,0, 0,0, 0,0, 0,0, 0x00, 0x00, '\r', '\n' };
@@ -286,9 +288,9 @@ float getActivationLikelihood(Queue<float> * q) {
     for (int i = 0; i < length; i++) {
         int multiplier = (i+1) * (i+1);
         beta += multiplier;
-        float cur = (*q).findAt(i - 1);
+        float cur = (*q).findAt(i);
         float prev = i == 0 ? cur : (*q).findAt(i - 1);
-        float delta = abs((*q).findAt(i) - prev); 
+        float delta = abs(cur - prev); 
         bool active = isActive(delta);
         int activationMultiplier = active ? 1 : 0;
         total += multiplier * activationMultiplier;
@@ -333,6 +335,11 @@ void loop() {
         // track FIFO count here in case there is > 1 packet available
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
+
+        if (warmupCountdown > 0) {
+            warmupCountdown--;
+            return;
+        }
 
         #ifdef OUTPUT_READABLE_QUATERNION
             // display quaternion values in easy matrix form: w x y z
