@@ -321,7 +321,7 @@ void loop() {
     // }
     // ledMatrix.setColumn(9, 0b11001100);
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
-    delay(200);
+    delay(20);
 
     // // if programming failed, don't try to do anything
     // if (!dmpReady) return;
