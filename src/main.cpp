@@ -58,6 +58,8 @@ THE SOFTWARE.
 // #include "queue.c";
 #include "Queue.h";
 
+#include <math.h>;
+
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for SparkFun breakout and InvenSense evaluation board)
@@ -254,14 +256,42 @@ void setup() {
  * Applies quadratic weighted moving averages to all values in the queue.
  * Does not modify the queue, instead returns the average.
  */
-float averageVal(Queue<float> * q) {
+float getAverageVal(Queue<float> * q) {
     int beta = 0;
     float total = 0;
     int length =  (*q).count();
     for (int i = 0; i < length; i++) {
-        int temp = (i+1) * (i+1);
-        beta += temp;
-        total += temp * (*q).findAt(i);
+        int multiplier = (i+1) * (i+1);
+        beta += multiplier;
+        total += multiplier * (*q).findAt(i);
+    }
+    return total / beta;
+}
+
+/**
+ * Tests if the given movement delta is considered being active. 
+ * This is important for windowing movement activity.
+ */
+inline bool isActive(float delta) {
+    return delta > 0.05;
+}
+
+/**
+ * Returns a value indicating the likelihood of the movement being within an activaty window.
+ */
+float getActivationLikelihood(Queue<float> * q) {
+    int beta = 0;
+    float total = 0;
+    int length = (*q).count();
+    for (int i = 0; i < length; i++) {
+        int multiplier = (i+1) * (i+1);
+        beta += multiplier;
+        float cur = (*q).findAt(i - 1);
+        float prev = i == 0 ? cur : (*q).findAt(i - 1);
+        float delta = abs((*q).findAt(i) - prev); 
+        bool active = isActive(delta);
+        int activationMultiplier = active ? 1 : 0;
+        total += multiplier * activationMultiplier;
     }
     return total / beta;
 }
@@ -276,16 +306,6 @@ void loop() {
           // try to get out of the infinite loop 
           fifoCount = mpu.getFIFOCount();
         }  
-        // other program behavior stuff here
-        // .
-        // .
-        // .
-        // if you are really paranoid you can frequently test in between other
-        // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-        // while() loop to immediately process the MPU data
-        // .
-        // .
-        // .
     }
 
     // reset interrupt flag and get INT_STATUS byte
@@ -371,10 +391,10 @@ void loop() {
                 queue.pop();
             }
             queue.push(ypr[2]);
-            float avg = averageVal(&queue);
+            float likelihood = getActivationLikelihood(&queue);
             Serial.print(ypr[2] * 180/M_PI);
-            Serial.print(", avg: ");
-            Serial.println(avg * 180/M_PI);
+            Serial.print(", likelihood: ");
+            Serial.println(likelihood * 180/M_PI);
         #endif
 
         #ifdef OUTPUT_READABLE_REALACCEL
