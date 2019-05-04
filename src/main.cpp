@@ -97,52 +97,95 @@ MPU6050 mpu;
 #define GESTURE_THRESHOLD 0.5 // The threshold for the likelihood to actually register it as a gesture.
 #define MIN_GESTURE_TIME_MS 1000 // the minimum time for a gesture to be detected. Blocks other gesture to be detected.
 
-#define NUMBER_OF_LED_MATRICES 4
-#define LED_CS_PIN 10
+#define NUMBER_OF_LED_MATRICES 4 // the number of used LED matrices
+#define LED_CS_PIN 10 // the PIN on the arduino connected to the 'CS' input of the MAX7219
+#define LED_UPDATE_FREQ_MS 100 // the frequency for the LED matrix to update
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
-byte TRIANGLES[4][8] = {
-    
+byte TRIANGLES[2][4][8] = {
     {
-        0b00000011,
-        0b00000110,
-        0b00001100,
-        0b00011000,
-        0b00011000,
-        0b00001100,
-        0b00000110,
-        0b00000011
-    },
-    {
-        0b00000111,
-        0b00001110,
-        0b00011100,
-        0b00111000,
-        0b00111000,
-        0b00011100,
-        0b00001110,
-        0b00000111
-    },
-    {
-        0b00001111,
-        0b00011110,
-        0b00111100,
-        0b01111000,
-        0b01111000,
-        0b00111100,
-        0b00011110,
-        0b00001111
-    },
-    {
-        0b00011111,
-        0b00111110,
-        0b01111100,
-        0b11111000,
-        0b11111000,
-        0b01111100,
-        0b00111110,
-        0b00011111
+        {
+            0b00000011,
+            0b00000110,
+            0b00001100,
+            0b00011000,
+            0b00011000,
+            0b00001100,
+            0b00000110,
+            0b00000011
+        },
+        {
+            0b00000111,
+            0b00001110,
+            0b00011100,
+            0b00111000,
+            0b00111000,
+            0b00011100,
+            0b00001110,
+            0b00000111
+        },
+        {
+            0b00001111,
+            0b00011110,
+            0b00111100,
+            0b01111000,
+            0b01111000,
+            0b00111100,
+            0b00011110,
+            0b00001111
+        },
+        {
+            0b00011111,
+            0b00111110,
+            0b01111100,
+            0b11111000,
+            0b11111000,
+            0b01111100,
+            0b00111110,
+            0b00011111
+        }
+    }, {
+        {
+            0b11000000,
+            0b01100000,
+            0b00110000,
+            0b00011000,
+            0b00011000,
+            0b00110000,
+            0b01100000,
+            0b11000000
+        },
+        {
+            0b11100000,
+            0b01110000,
+            0b00111000,
+            0b00011100,
+            0b00011100,
+            0b00111000,
+            0b01110000,
+            0b11100000
+        },
+        {
+            0b11110000,
+            0b01111000,
+            0b00111100,
+            0b00011110,
+            0b00011110,
+            0b00111100,
+            0b01111000,
+            0b11110000
+        },
+        {
+            0b11111000,
+            0b01111100,
+            0b00111110,
+            0b00011111,
+            0b00011111,
+            0b00111110,
+            0b01111100,
+            0b11111000
+        }
     }
 };
 
@@ -174,9 +217,13 @@ float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
 uint8_t warmupCountdown = WARMUP_LENGTH;
-Gesture gesture = {
+Gesture activeGesture = {
     type: NONE
 };
+Gesture lastRecognizedGesture = {
+    type: NONE
+};
+unsigned long lastLedUpdate = 0;
 
 
 
@@ -325,7 +372,11 @@ float getActivityLikelihood(Queue<float> * q, bool * positive) {
     return totalLikelihood / beta;
 }
 
-void updateActivity(Queue<float> * q) {
+/**
+ * Recognizes the gesture by reading the queue of motion measurements produced by the MPU6050.
+ * Waits at least MIN_GESTURE_TIME_MS milliseconds until it tries to detect a new gesture.
+ */
+void recognizeGesture(Queue<float> * q, Gesture &gesture) {
     boolean isPositive;
     float likelihood = getActivityLikelihood(q, &isPositive);
     unsigned long now = millis();
@@ -343,13 +394,50 @@ void updateActivity(Queue<float> * q) {
     }
 }
 
-void blink(/*Gesture * gesture*/) {
-    ledMatrix.clear();
-    for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
-        ledMatrix.setColumn(i, TRIANGLES[activeTriangle][i%8]);
+/**
+ * Updates the 'activeGesture'. Returns true if the active gesture has changed, otherwise false. 
+ */
+bool updateGesture() {
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+    if (queue.count() == SMOOTHING_SAMPLE_SIZE) {
+        queue.pop();
     }
-    ++activeTriangle;
-    activeTriangle %= NUMBER_OF_LED_MATRICES;
+    queue.push(ypr[2]);
+    recognizeGesture(&queue, lastRecognizedGesture);
+    unsigned long now = millis();
+    if (activeGesture.type == NONE && lastRecognizedGesture.type != NONE && (now - activeGesture.begin) > MIN_GESTURE_TIME_MS) {
+        // a gesture was recognized that causes a change of state
+        activeGesture = lastRecognizedGesture;
+        return true;
+    } else if (
+        activeGesture.type == ROLL_LEFT && lastRecognizedGesture.type == ROLL_RIGHT ||
+        activeGesture.type == ROLL_RIGHT && lastRecognizedGesture.type == ROLL_LEFT
+    ) {
+        activeGesture.type = NONE;
+        activeGesture.begin = lastRecognizedGesture.begin;
+        return true;
+    }
+    return false;
+}
+
+void blink(Gesture &gesture) {
+    unsigned long now = millis(); 
+    if (now - lastLedUpdate < LED_UPDATE_FREQ_MS) {
+        return;
+    }
+    lastLedUpdate = now;
+
+    ledMatrix.clear();
+    if (gesture.type != NONE) {
+        bool triangleSelect = gesture.type == ROLL_LEFT;
+        for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
+            ledMatrix.setColumn(i, TRIANGLES[triangleSelect][activeTriangle][i%8]);
+        }
+        ++activeTriangle;
+        activeTriangle %= NUMBER_OF_LED_MATRICES;
+    }
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
 
@@ -357,7 +445,7 @@ void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
-    blink();
+    blink(activeGesture);
 
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
@@ -398,15 +486,7 @@ void loop() {
             return;
         }
 
-        mpu.dmpGetQuaternion(&q, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-        if (queue.count() == SMOOTHING_SAMPLE_SIZE) {
-            queue.pop();
-        }
-        queue.push(ypr[2]);
-        updateActivity(&queue);
-        Serial.println(gesture.type);
+        updateGesture();
 
         // blink LED to indicate activity
         blinkState = !blinkState;
