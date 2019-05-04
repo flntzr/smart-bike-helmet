@@ -91,8 +91,8 @@ MPU6050 mpu;
 
 #define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
-#define SMOOTHING_SAMPLE_SIZE 15 // The amount of 'roll' values that are remembered for smoothing
-#define WARMUP_LENGTH 50 // the amount of initial measurements that are discarded to the sensor needing to adjust
+#define SMOOTHING_SAMPLE_SIZE 12 // The amount of 'roll' values that are remembered for smoothing
+#define WARMUP_LENGTH 100 // the amount of initial measurements that are discarded to the sensor needing to adjust
 #define ACTIVITY_THRESHOLD 0.012 // The minimal absolute delta for a movement to be considered active.
 #define GESTURE_THRESHOLD 0.5 // The threshold for the likelihood to actually register it as a gesture.
 #define MIN_GESTURE_TIME_MS 1000 // the minimum time for a gesture to be detected. Blocks other gesture to be detected.
@@ -100,6 +100,7 @@ MPU6050 mpu;
 #define NUMBER_OF_LED_MATRICES 4 // the number of used LED matrices
 #define LED_CS_PIN 10 // the PIN on the arduino connected to the 'CS' input of the MAX7219
 #define LED_UPDATE_FREQ_MS 100 // the frequency for the LED matrix to update
+#define LED_INTENSITY 15 // The LED matrix intensity. Range is 0-15
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -259,7 +260,7 @@ void setup() {
 
     // pinMode(INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
-    ledMatrix.setIntensity(0); // range is 0-15
+    ledMatrix.setIntensity(LED_INTENSITY);
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
     // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
