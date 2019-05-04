@@ -100,17 +100,53 @@ MPU6050 mpu;
 #define NUMBER_OF_LED_MATRICES 4
 #define LED_CS_PIN 10
 
-byte TRIANGLE8x8[8] = {
-    0b00011111,
-    0b00111110,
-    0b01111100,
-    0b11111000,
-    0b11111000,
-    0b01111100,
-    0b00111110,
-    0b00011111
+const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
+
+byte TRIANGLES[4][8] = {
+    
+    {
+        0b00000011,
+        0b00000110,
+        0b00001100,
+        0b00011000,
+        0b00011000,
+        0b00001100,
+        0b00000110,
+        0b00000011
+    },
+    {
+        0b00000111,
+        0b00001110,
+        0b00011100,
+        0b00111000,
+        0b00111000,
+        0b00011100,
+        0b00001110,
+        0b00000111
+    },
+    {
+        0b00001111,
+        0b00011110,
+        0b00111100,
+        0b01111000,
+        0b01111000,
+        0b00111100,
+        0b00011110,
+        0b00001111
+    },
+    {
+        0b00011111,
+        0b00111110,
+        0b01111100,
+        0b11111000,
+        0b11111000,
+        0b01111100,
+        0b00111110,
+        0b00011111
+    }
 };
 
+uint8_t activeTriangle = 0;
 LedMatrix ledMatrix = LedMatrix(NUMBER_OF_LED_MATRICES, LED_CS_PIN);
 enum { NONE, ROLL_LEFT, ROLL_RIGHT};
 struct Gesture {
@@ -180,7 +216,6 @@ void setup() {
     // pinMode(INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
     ledMatrix.setIntensity(0); // range is 0-15
-    ledMatrix.setText("AAA");
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
     // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
@@ -312,16 +347,14 @@ void updateActivity(Queue<float> * q) {
 }
 
 void loop() {
-    Serial.print(".");
     ledMatrix.clear();
-    ledMatrix.scrollTextLeft();
-    ledMatrix.drawText();
-    // for (int i = 0; i < 8; i++) {
-    //      ledMatrix.setColumn(i, TRIANGLE8x8[i]);
-    // }
-    // ledMatrix.setColumn(9, 0b11001100);
+    for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
+        ledMatrix.setColumn(i, TRIANGLES[activeTriangle][i%8]);
+    }
+    ++activeTriangle;
+    activeTriangle %= NUMBER_OF_LED_MATRICES;
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
-    delay(20);
+    delay(100);
 
     // // if programming failed, don't try to do anything
     // if (!dmpReady) return;

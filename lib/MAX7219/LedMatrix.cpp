@@ -9,7 +9,6 @@ LedMatrix::LedMatrix(byte numberOfDevices, byte slaveSelectPin) {
     myNumberOfDevices = numberOfDevices;
     mySlaveSelectPin = slaveSelectPin;
     cols = new byte[numberOfDevices * 8];
-    xcols = new byte[numberOfDevices * 8];
 }
 
 /**
@@ -98,17 +97,8 @@ void LedMatrix::clear() {
 }
 
 void LedMatrix::commit() {
-    byte index = B0000001;
-    byte col; 
-    for (col = 0; col < myNumberOfDevices * 8; col++) {
-        xcols[col] = 0; 
-    }
-    // little inefficient, can be enhanced, rotate the matrix !
-    for (col = 0; col < myNumberOfDevices * 8; col++) {
-        for(byte bits = 0; bits < 8; bits++) 
-            xcols[col] |= ((cols[bits + 8*(col/8)] & (index << (col%8))) ?
-                                    (B10000000 >> bits) : 0);  
-        sendByte(col / 8, col % 8 + 1, xcols[col]);
+    for (byte col = 0; col < myNumberOfDevices * 8; col++) {
+        sendByte(col / 8, col % 8 + 1, cols[col]);
     }
 }
 

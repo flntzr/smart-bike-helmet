@@ -119,7 +119,6 @@ public:
     
 private:
     byte* cols;
-    byte* xcols;
     byte spiregister[8];
     byte spidata[8];
     String myText;
