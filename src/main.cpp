@@ -104,7 +104,7 @@ MPU6050 mpu;
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
-byte TRIANGLES[2][4][8] = {
+byte ARROWS[2][4][8] = {
     {
         {
             0b00000011,
@@ -190,7 +190,7 @@ byte TRIANGLES[2][4][8] = {
     }
 };
 
-uint8_t activeTriangle = 0;
+uint8_t activeArrow = 0;
 LedMatrix ledMatrix = LedMatrix(NUMBER_OF_LED_MATRICES, LED_CS_PIN);
 enum { NONE, ROLL_LEFT, ROLL_RIGHT};
 struct Gesture {
@@ -423,7 +423,10 @@ bool updateGesture() {
     return false;
 }
 
-void blink(Gesture &gesture) {
+/**
+ * Renders the active gesture on the LED matrices.
+ */
+void renderGesture(Gesture &gesture) {
     unsigned long now = millis(); 
     if (now - lastLedUpdate < LED_UPDATE_FREQ_MS) {
         return;
@@ -432,12 +435,12 @@ void blink(Gesture &gesture) {
 
     ledMatrix.clear();
     if (gesture.type != NONE) {
-        bool triangleSelect = gesture.type == ROLL_LEFT;
+        bool arrowIdx = gesture.type == ROLL_LEFT;
         for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
-            ledMatrix.setColumn(i, TRIANGLES[triangleSelect][activeTriangle][i%8]);
+            ledMatrix.setColumn(i, ARROWS[arrowIdx][activeArrow][i%8]);
         }
-        ++activeTriangle;
-        activeTriangle %= NUMBER_OF_LED_MATRICES;
+        ++activeArrow;
+        activeArrow %= NUMBER_OF_LED_MATRICES;
     }
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
@@ -446,7 +449,7 @@ void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
-    blink(activeGesture);
+    renderGesture(activeGesture);
 
     // wait for MPU interrupt or extra packet(s) available
     while (!mpuInterrupt && fifoCount < packetSize) {
