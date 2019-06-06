@@ -93,7 +93,7 @@ MPU6050 mpu;
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define SMOOTHING_SAMPLE_SIZE 12 // The amount of 'roll' values that are remembered for smoothing
 #define WARMUP_LENGTH 100 // the amount of initial measurements that are discarded to the sensor needing to adjust
-#define ACTIVITY_THRESHOLD 0.012 // The minimal absolute delta for a movement to be considered active.
+#define ACTIVITY_THRESHOLD 0.022 // The minimal absolute delta for a movement to be considered active.
 #define GESTURE_THRESHOLD 0.5 // The threshold for the likelihood to actually register it as a gesture.
 #define MIN_GESTURE_TIME_MS 1000 // the minimum time for a gesture to be detected. Blocks other gesture to be detected.
 
@@ -101,6 +101,10 @@ MPU6050 mpu;
 #define LED_CS_PIN 10 // the PIN on the arduino connected to the 'CS' input of the MAX7219
 #define LED_UPDATE_FREQ_MS 100 // the frequency for the LED matrix to update
 #define LED_INTENSITY 15 // The LED matrix intensity. Range is 0-15
+
+#define BLINK_START_TONE_FREC 2500
+#define BLINK_END_TONE_FREC 3000
+#define BLINK_TONE_DURATION 200
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -445,6 +449,11 @@ void renderGesture(Gesture &gesture) {
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
 
+void playTone() {
+    // louder ton
+    tone(8, activeGesture.type == NONE ? BLINK_END_TONE_FREC : BLINK_START_TONE_FREC, BLINK_TONE_DURATION);
+}
+
 void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
@@ -490,10 +499,10 @@ void loop() {
             return;
         }
 
-        updateGesture();
+        boolean gestureUpdated = updateGesture();
 
-        // blink LED to indicate activity
-        blinkState = !blinkState;
-        digitalWrite(LED_PIN, blinkState);
+        if (gestureUpdated) {
+            playTone();
+        }
     }
 }
