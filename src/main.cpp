@@ -46,6 +46,8 @@ THE SOFTWARE.
 // for both classes must be in the include path of your project
 #include "I2Cdev.h"
 
+#include "avr/sleep.h"
+
 #include "MPU6050_6Axis_MotionApps20.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
 
@@ -251,9 +253,6 @@ uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
-VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
 VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
@@ -266,12 +265,6 @@ Gesture lastRecognizedGesture = {
     type: NONE
 };
 unsigned long lastLedUpdate = 0;
-
-
-
-// ================================================================
-// ===               INTERRUPT DETECTION ROUTINE                ===
-// ================================================================
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
@@ -286,9 +279,36 @@ void renderFace(byte expression) {
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
 
-// ================================================================
-// ===                      INITIAL SETUP                       ===
-// ================================================================
+
+const byte powerButtonPin = 3;
+volatile bool sleeping = false;
+
+void afterWakeUp(void) {
+    /* detach Interrupt so it only triggers once */
+    detachInterrupt(digitalPinToInterrupt(powerButtonPin));
+    // while (digitalRead(powerButtonPin) == LOW) {
+    //     // wait for button to be released
+    //     delayMicroseconds(50 * 1000);
+    // }
+    Serial.println("A"); 
+}
+
+void enterSleep() {
+    while (digitalRead(powerButtonPin) == LOW) {
+        // wait for button to be released
+        delay(50);
+    }
+    Serial.println("R");
+    attachInterrupt(digitalPinToInterrupt(powerButtonPin), afterWakeUp, LOW);
+    renderFace(NEUTRAL_FACE);
+    Serial.println("E");
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    sleep_enable();
+    sleep_mode();
+    sleep_disable();
+    Serial.println("W"); 
+    renderFace(SMILEY_FACE);
+}
 
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
@@ -300,10 +320,10 @@ void setup() {
     #endif
 
     // initialize serial communication
-    // (115200 chosen because it is required for Teapot Demo output, but it's
-    // really up to you depending on your project)
     Serial.begin(115200);
-    // while (!Serial); // wait for Leonardo enumeration, others continue immediately
+    pinMode(powerButtonPin, INPUT_PULLUP);
+    // attachInterrupt(digitalPinToInterrupt(powerButtonPin), enterSleep, HIGH);
+    // attachInterrupt(digitalPinToInterrupt(powerButtonPin), a, LOW);
 
     // pinMode(INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
@@ -496,6 +516,10 @@ void playTone() {
 void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
+
+    if (digitalRead(powerButtonPin) == LOW) {
+        enterSleep();
+    }
 
     renderGesture(activeGesture);
 
