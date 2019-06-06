@@ -108,6 +108,42 @@ MPU6050 mpu;
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
+byte FACES[3][8] = {
+    // :)
+    {
+        0b00000000,
+        0b00100100,
+        0b00100100,
+        0b00000000,
+        0b00000000,
+        0b01000010,
+        0b00111100,
+        0b00000000
+    },
+    // :|
+    {
+        0b00000000,
+        0b00100100,
+        0b00100100,
+        0b00000000,
+        0b00000000,
+        0b00000000,
+        0b01111110,
+        0b00000000
+    },
+    // :(
+    {
+        0b00000000,
+        0b00100100,
+        0b00100100,
+        0b00000000,
+        0b00000000,
+        0b00111100,
+        0b01000010,
+        0b00000000
+    }
+};
+
 byte ARROWS[2][4][8] = {
     {
         {
@@ -201,6 +237,7 @@ struct Gesture {
     uint8_t type;
     unsigned long begin;
 };
+enum {SMILEY_FACE, NEUTRAL_FACE, FROWNY_FACE};
 
 bool blinkState = false;
 
@@ -241,7 +278,13 @@ void dmpDataReady() {
     mpuInterrupt = true;
 }
 
-
+void renderFace(byte expression) {
+    ledMatrix.clear();
+    for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
+        ledMatrix.setColumn(i, FACES[expression][i%8]);
+    }
+    ledMatrix.commit(); // commit transfers the byte buffer to the displays
+}
 
 // ================================================================
 // ===                      INITIAL SETUP                       ===
@@ -265,6 +308,7 @@ void setup() {
     // pinMode(INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
     ledMatrix.setIntensity(LED_INTENSITY);
+    renderFace(SMILEY_FACE);
 
     // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
     // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
@@ -280,12 +324,6 @@ void setup() {
     // verify connection
     Serial.println(F("Testing device connections..."));
     Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
-    // wait for ready
-    Serial.println(F("\nSend any character to begin DMP programming and demo: "));
-    while (Serial.available() && Serial.read()); // empty buffer
-    while (!Serial.available());                 // wait for data
-    while (Serial.available() && Serial.read()); // empty buffer again
 
     // load and configure the DMP
     Serial.println(F("Initializing DMP..."));
@@ -326,6 +364,7 @@ void setup() {
         Serial.print(F("DMP Initialization failed (code "));
         Serial.print(devStatus);
         Serial.println(F(")"));
+        renderFace(FROWNY_FACE);
     }
 
     // configure LED for output
