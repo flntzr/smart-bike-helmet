@@ -91,7 +91,7 @@ MPU6050 mpu;
  * ========================================================================= */
 
 
-#define INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
+#define MPU_INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define SMOOTHING_SAMPLE_SIZE 12 // The amount of 'roll' values that are remembered for smoothing
 #define WARMUP_LENGTH 100 // the amount of initial measurements that are discarded to the sensor needing to adjust
@@ -107,6 +107,9 @@ MPU6050 mpu;
 #define BLINK_START_TONE_FREC 2500
 #define BLINK_END_TONE_FREC 3000
 #define BLINK_TONE_DURATION 200
+
+#define POWER_BUTTON_PIN 3
+#define POWER_BUTTON_DELAY_MS 1000 // delay for each power button press to be processed. Necessary so no double-presses register.
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -271,6 +274,11 @@ void dmpDataReady() {
     mpuInterrupt = true;
 }
 
+void clearMatrix() {
+    ledMatrix.clear();
+    ledMatrix.commit();
+}
+
 void renderFace(byte expression) {
     ledMatrix.clear();
     for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
@@ -279,35 +287,46 @@ void renderFace(byte expression) {
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
 
+void clearGestures() {
+    unsigned long now = millis();
+    queue.clear();
+    activeGesture.type = NONE;
+    activeGesture.begin = now;
+    lastRecognizedGesture.type = NONE;
+    lastRecognizedGesture.begin = now;
+}
 
-const byte powerButtonPin = 3;
-volatile bool sleeping = false;
+void afterWakeUp() {
+    renderFace(SMILEY_FACE);
 
-void afterWakeUp(void) {
-    /* detach Interrupt so it only triggers once */
-    detachInterrupt(digitalPinToInterrupt(powerButtonPin));
-    // while (digitalRead(powerButtonPin) == LOW) {
-    //     // wait for button to be released
-    //     delayMicroseconds(50 * 1000);
-    // }
-    Serial.println("A"); 
+    // detach Interrupt so it only triggers once
+    detachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN));
+    while (digitalRead(POWER_BUTTON_PIN) == LOW) {
+        // Wait for button to be released. Can't use delay() because we are inside an interrupt.
+        delayMicroseconds(POWER_BUTTON_DELAY_MS * 1000);
+    }
+    // reattach MPU interrupt
+    attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
+    // TODO: clean the FIFO Buffer? Unfortunately we never hit loop() again if we do that here
+
+    // clear all recognized gestures
+    clearGestures();
 }
 
 void enterSleep() {
-    while (digitalRead(powerButtonPin) == LOW) {
+    clearMatrix();
+    while (digitalRead(POWER_BUTTON_PIN) == LOW) {
         // wait for button to be released
-        delay(50);
+        delay(POWER_BUTTON_DELAY_MS);
     }
-    Serial.println("R");
-    attachInterrupt(digitalPinToInterrupt(powerButtonPin), afterWakeUp, LOW);
-    renderFace(NEUTRAL_FACE);
-    Serial.println("E");
+    // detach the MPU interrupts so MPU readings don't wake us up from sleep
+    detachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN));
+    // instead only accept interrupts from the power button
+    attachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN), afterWakeUp, LOW);
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sleep_mode();
     sleep_disable();
-    Serial.println("W"); 
-    renderFace(SMILEY_FACE);
 }
 
 void setup() {
@@ -321,11 +340,11 @@ void setup() {
 
     // initialize serial communication
     Serial.begin(115200);
-    pinMode(powerButtonPin, INPUT_PULLUP);
+    pinMode(POWER_BUTTON_PIN, INPUT_PULLUP);
     // attachInterrupt(digitalPinToInterrupt(powerButtonPin), enterSleep, HIGH);
     // attachInterrupt(digitalPinToInterrupt(powerButtonPin), a, LOW);
 
-    // pinMode(INTERRUPT_PIN, OUTPUT);
+    // pinMode(MPU_INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
     ledMatrix.setIntensity(LED_INTENSITY);
     renderFace(SMILEY_FACE);
@@ -339,7 +358,7 @@ void setup() {
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
     mpu.initialize();
-    pinMode(INTERRUPT_PIN, INPUT);
+    pinMode(MPU_INTERRUPT_PIN, INPUT);
 
     // verify connection
     Serial.println(F("Testing device connections..."));
@@ -365,9 +384,9 @@ void setup() {
 
         // enable Arduino interrupt detection
         Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-        Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+        Serial.print(digitalPinToInterrupt(MPU_INTERRUPT_PIN));
         Serial.println(F(")..."));
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+        attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
         mpuIntStatus = mpu.getIntStatus();
 
         // set our DMP Ready flag so the main loop() function knows it's okay to use it
@@ -517,7 +536,7 @@ void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
-    if (digitalRead(powerButtonPin) == LOW) {
+    if (digitalRead(POWER_BUTTON_PIN) == LOW) {
         enterSleep();
     }
 
