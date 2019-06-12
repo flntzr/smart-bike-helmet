@@ -1,5 +1,6 @@
 #include "GestureRecognizer.h"
 
+GestureRecognizer *recognizer;
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 
 void dmpDataReady() {
@@ -9,6 +10,7 @@ void dmpDataReady() {
 GestureRecognizer::GestureRecognizer() {
     // constructor
     queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
+    recognizer = this;
 }
 
 bool GestureRecognizer::init() {
@@ -45,9 +47,7 @@ bool GestureRecognizer::init() {
         // turn on the DMP, now that it's ready
         mpu.setDMPEnabled(true);
 
-
         // enable Arduino interrupt detection
-        // SPIClass spi = *new SPIClass();
         attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
         mpuIntStatus = mpu.getIntStatus();
 
@@ -69,21 +69,28 @@ bool GestureRecognizer::init() {
 }
 
 bool GestureRecognizer::processSensorData() {
-    // not enough new packets are available
-    if (!mpuInterrupt && fifoCount < packetSize) {
-        return false;
+    // wait for enough new packets available
+    while (!mpuInterrupt && fifoCount < packetSize) {
+        if (mpuInterrupt && fifoCount < packetSize) {
+          // try to get out of the infinite loop 
+          fifoCount = mpu.getFIFOCount();
+        }  
     }
 
     // reset interrupt flag and get INT_STATUS byte
     mpuInterrupt = false;
     mpuIntStatus = mpu.getIntStatus();
 
-    if (this->hasOverflown()) {
-        this->handleOverflow();
-        return false;
-    } 
+    // get current FIFO count
+    fifoCount = mpu.getFIFOCount();
 
-    if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
+    // check for overflow (this should never happen unless our code is too inefficient)
+    if ((mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024) {
+        // reset so we can continue cleanly
+        mpu.resetFIFO();
+        fifoCount = mpu.getFIFOCount();
+        Serial.println(F("FIFO overflow!"));
+    } else if (mpuIntStatus & _BV(MPU6050_INTERRUPT_DMP_INT_BIT)) {
         // wait for correct available data length, should be a VERY short wait
         while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
@@ -125,8 +132,8 @@ bool GestureRecognizer::updateGesture() {
     if (queue.count() == SMOOTHING_SAMPLE_SIZE) {
         queue.pop();
     }
-    Serial.print("roll: ");
-    Serial.println(ypr[2]);
+    // Serial.print("roll: ");
+    // Serial.println(ypr[2]);
     queue.push(ypr[2]);
     this->recognizeGesture(&queue, lastRecognizedGesture);
     unsigned long now = millis();

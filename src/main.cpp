@@ -234,8 +234,6 @@ void playTone(Gesture &gesture) {
 }
 
 void loop() {
-    // Serial.print("a");
-
     // if programming failed, don't try to do anything
     if (!initSuccessful) return;
 
@@ -254,5 +252,5 @@ void loop() {
         Gesture newGesture = gestureRecognizer.getActiveGesture();
         playTone(newGesture);
     }
-    delay(20);
+    // delay(20);
 }
