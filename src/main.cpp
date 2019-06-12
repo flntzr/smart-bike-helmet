@@ -109,14 +109,14 @@ MPU6050 mpu;
 #define BLINK_TONE_DURATION 200
 
 #define POWER_BUTTON_PIN 3
-#define POWER_BUTTON_DELAY_MS 1000 // delay for each power button press to be processed. Necessary so no double-presses register.
+#define POWER_BUTTON_DELAY_MS 1500 // delay for each power button press to be processed. Necessary so no double-presses register.
 #define POWER_TONE_DURATION 125 // how long each tone plays during power-down / power-up
 
 #define TONE_PIN 8
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
-byte FACES[3][8] = {
+byte SYMBOLS[4][8] = {
     // :)
     {
         0b00000000,
@@ -148,6 +148,17 @@ byte FACES[3][8] = {
         0b00000000,
         0b00111100,
         0b01000010,
+        0b00000000
+    },
+    // Z
+    {
+        0b00000000,
+        0b01111110,
+        0b00000100,
+        0b00001000,
+        0b00010000,
+        0b00100000,
+        0b01111110,
         0b00000000
     }
 };
@@ -252,12 +263,17 @@ int powerDownTones[3] = {
 
 uint8_t activeArrow = 0;
 LedMatrix ledMatrix = LedMatrix(NUMBER_OF_LED_MATRICES, LED_CS_PIN);
-enum { NONE, ROLL_LEFT, ROLL_RIGHT};
+enum direction { NONE, ROLL_LEFT, ROLL_RIGHT};
 struct Gesture {
-    uint8_t type;
+    direction type;
     unsigned long begin;
 };
-enum {SMILEY_FACE, NEUTRAL_FACE, FROWNY_FACE};
+enum symbol {
+    SMILEY_FACE, 
+    NEUTRAL_FACE, 
+    FROWNY_FACE,
+    Z
+};
 
 bool blinkState = false;
 
@@ -298,10 +314,10 @@ void clearMatrix() {
     ledMatrix.commit();
 }
 
-void renderFace(byte expression) {
+void renderSymbolOnMatrix(symbol expression) {
     ledMatrix.clear();
     for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
-        ledMatrix.setColumn(i, FACES[expression][i%8]);
+        ledMatrix.setColumn(i, SYMBOLS[expression][i%8]);
     }
     ledMatrix.commit(); // commit transfers the byte buffer to the displays
 }
@@ -345,17 +361,18 @@ void powerUpISR() {
     attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
     // TODO: clean the FIFO Buffer?
 
-    renderFace(SMILEY_FACE);
+    renderSymbolOnMatrix(SMILEY_FACE);
 }
 
 void powerDown() {
-    clearMatrix();
+    renderSymbolOnMatrix(Z);
     playPowerMelody(false);
     while (digitalRead(POWER_BUTTON_PIN) == LOW) {
         // wait for button to be released
         delay(POWER_BUTTON_DELAY_MS);
     }
     lastPowerDownTime = millis();
+    clearMatrix();
     // detach the MPU interrupts so MPU readings don't wake us up from sleep
     detachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN));
     // instead only accept interrupts from the power button
@@ -382,7 +399,7 @@ void setup() {
     // pinMode(MPU_INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
     ledMatrix.setIntensity(LED_INTENSITY);
-    renderFace(SMILEY_FACE);
+    renderSymbolOnMatrix(SMILEY_FACE);
 
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -432,7 +449,7 @@ void setup() {
         Serial.print(F("DMP Initialization failed (code "));
         Serial.print(devStatus);
         Serial.println(F(")"));
-        renderFace(FROWNY_FACE);
+        renderSymbolOnMatrix(FROWNY_FACE);
     }
 
     // configure LED for output
@@ -571,7 +588,7 @@ void loop() {
     // the device was powered up very recently:
     // block execution for a bit and maybe play a melody
     if (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
-        renderFace(SMILEY_FACE);
+        renderSymbolOnMatrix(SMILEY_FACE);
         if (playPowerUpMelody) {
             playPowerMelody(true);
             playPowerUpMelody = false;
