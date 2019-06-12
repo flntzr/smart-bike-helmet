@@ -1,5 +1,3 @@
-// #include <Wire.h>
-
 #include "GestureRecognizer.h"
 #include "avr/sleep.h"
 #include <math.h>
@@ -195,16 +193,17 @@ void setup() {
     // initialize serial communication
     Serial.begin(115200);
     pinMode(POWER_BUTTON_PIN, INPUT_PULLUP);
+    gestureRecognizer = GestureRecognizer();
+    initSuccessful = gestureRecognizer.init();
 
     ledMatrix.init();
     ledMatrix.setIntensity(LED_INTENSITY);
-    renderFace(SMILEY_FACE);
-
-    gestureRecognizer = * new GestureRecognizer();
-    initSuccessful = gestureRecognizer.init();
     if (!initSuccessful) {
         renderFace(FROWNY_FACE);
+    } else {
+        renderFace(SMILEY_FACE);
     }
+
 }
 
 /**
@@ -235,19 +234,25 @@ void playTone(Gesture &gesture) {
 }
 
 void loop() {
+    // Serial.print("a");
+
     // if programming failed, don't try to do anything
     if (!initSuccessful) return;
 
+    // Serial.print("b");
     if (digitalRead(POWER_BUTTON_PIN) == LOW) {
         enterSleep();
     }
-
+    
+    // Serial.print("c");
     Gesture gesture = gestureRecognizer.getActiveGesture();
     renderGesture(gesture);
 
+    // Serial.print("d");
     bool gestureChanged = gestureRecognizer.processSensorData();
     if (gestureChanged) {
         Gesture newGesture = gestureRecognizer.getActiveGesture();
         playTone(newGesture);
     }
+    delay(20);
 }

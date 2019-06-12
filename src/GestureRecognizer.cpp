@@ -8,6 +8,7 @@ void dmpDataReady() {
 
 GestureRecognizer::GestureRecognizer() {
     // constructor
+    queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
 }
 
 bool GestureRecognizer::init() {
@@ -78,8 +79,7 @@ bool GestureRecognizer::processSensorData() {
     mpuIntStatus = mpu.getIntStatus();
 
     if (this->hasOverflown()) {
-        this->
-        handleOverflow();
+        this->handleOverflow();
         return false;
     } 
 
@@ -94,10 +94,10 @@ bool GestureRecognizer::processSensorData() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
-        if (warmupCountdown > 0) {
-            warmupCountdown--;
-            return false;
-        }
+        // if (warmupCountdown > 0) {
+        //     warmupCountdown--;
+        //     return false;
+        // }
 
         return this->updateGesture();
     }
@@ -105,12 +105,12 @@ bool GestureRecognizer::processSensorData() {
     return false;
 }
 
-bool GestureRecognizer::hasOverflown() {
+bool inline GestureRecognizer::hasOverflown() {
     fifoCount = mpu.getFIFOCount();
     return (mpuIntStatus & _BV(MPU6050_INTERRUPT_FIFO_OFLOW_BIT)) || fifoCount >= 1024;
 }
 
-void GestureRecognizer::handleOverflow() {
+void inline GestureRecognizer::handleOverflow() {
     mpu.resetFIFO();
     fifoCount = mpu.getFIFOCount();
 }
@@ -125,6 +125,8 @@ bool GestureRecognizer::updateGesture() {
     if (queue.count() == SMOOTHING_SAMPLE_SIZE) {
         queue.pop();
     }
+    Serial.print("roll: ");
+    Serial.println(ypr[2]);
     queue.push(ypr[2]);
     this->recognizeGesture(&queue, lastRecognizedGesture);
     unsigned long now = millis();

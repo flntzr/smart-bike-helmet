@@ -46,10 +46,10 @@ THE SOFTWARE.
 #define _GESTURE_RECOGNIZER_H_
 // I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
 // for both classes must be in the include path of your project
-#include "I2Cdev.h"
+// #include "I2Cdev.h"
 // #include <SPI.h>
 
-#include "MPU6050_6Axis_MotionApps20.h"
+#include "MPU6050.h"
 //#include "MPU6050.h" // not necessary if using MotionApps include file
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
@@ -106,7 +106,7 @@ class GestureRecognizer {
         Quaternion q;           // [w, x, y, z]         quaternion container
         VectorFloat gravity;    // [x, y, z]            gravity vector
         float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-        Queue<float> queue = Queue<float>(SMOOTHING_SAMPLE_SIZE);
+        Queue<float> queue;
         uint8_t warmupCountdown = WARMUP_LENGTH;
         Gesture activeGesture = { type: NONE };
         Gesture lastRecognizedGesture = { type: NONE };
