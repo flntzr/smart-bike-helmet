@@ -110,6 +110,9 @@ MPU6050 mpu;
 
 #define POWER_BUTTON_PIN 3
 #define POWER_BUTTON_DELAY_MS 1000 // delay for each power button press to be processed. Necessary so no double-presses register.
+#define POWER_TONE_DURATION 125 // how long each tone plays during power-down / power-up
+
+#define TONE_PIN 8
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -235,6 +238,18 @@ byte ARROWS[2][4][8] = {
     }
 };
 
+int powerUpTones[3] = {
+    1319,
+    1245,
+    1480
+};
+
+int powerDownTones[3] = {
+    1480,
+    1245,
+    1319
+};
+
 uint8_t activeArrow = 0;
 LedMatrix ledMatrix = LedMatrix(NUMBER_OF_LED_MATRICES, LED_CS_PIN);
 enum { NONE, ROLL_LEFT, ROLL_RIGHT};
@@ -269,6 +284,10 @@ Gesture lastRecognizedGesture = {
 };
 unsigned long lastLedUpdate = 0;
 
+unsigned long lastPowerDownTime;
+unsigned long lastPowerUpTime;
+bool playPowerUpMelody = false;
+
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
     mpuInterrupt = true;
@@ -296,33 +315,51 @@ void clearGestures() {
     lastRecognizedGesture.begin = now;
 }
 
-void afterWakeUp() {
-    renderFace(SMILEY_FACE);
-
-    // detach Interrupt so it only triggers once
-    detachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN));
-    while (digitalRead(POWER_BUTTON_PIN) == LOW) {
-        // Wait for button to be released. Can't use delay() because we are inside an interrupt.
-        delayMicroseconds(POWER_BUTTON_DELAY_MS * 1000);
+/**
+ * Plays a melody for power-up and power-down.
+ */
+void playPowerMelody(bool powerUp) {
+    int* ptr = powerUp ? powerUpTones : powerDownTones;
+    int length = (powerUp ? sizeof(powerUpTones) : sizeof(powerDownTones)) / sizeof(int);
+    for (int i = 0; i < length; i++) {
+        tone(TONE_PIN, *(ptr++), POWER_TONE_DURATION);
+        delay(POWER_TONE_DURATION);
     }
-    // reattach MPU interrupt
-    attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
-    // TODO: clean the FIFO Buffer? Unfortunately we never hit loop() again if we do that here
-
-    // clear all recognized gestures
-    clearGestures();
 }
 
-void enterSleep() {
+/**
+ * Interrupt service routine which is triggered on a button press.
+ * "Powers up" the device, i.e. wakes it up from sleep mode.
+ */
+void powerUpISR() {
+    // detach Interrupt so it only triggers once
+    detachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN));
+
+    lastPowerUpTime = millis();
+    playPowerUpMelody = true;
+    
+    // clear all recognized gestures
+    clearGestures();
+
+    // reattach MPU interrupt
+    attachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN), dmpDataReady, RISING);
+    // TODO: clean the FIFO Buffer?
+
+    renderFace(SMILEY_FACE);
+}
+
+void powerDown() {
     clearMatrix();
+    playPowerMelody(false);
     while (digitalRead(POWER_BUTTON_PIN) == LOW) {
         // wait for button to be released
         delay(POWER_BUTTON_DELAY_MS);
     }
+    lastPowerDownTime = millis();
     // detach the MPU interrupts so MPU readings don't wake us up from sleep
     detachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN));
     // instead only accept interrupts from the power button
-    attachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN), afterWakeUp, LOW);
+    attachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN), powerUpISR, LOW);
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sleep_mode();
@@ -341,19 +378,11 @@ void setup() {
     // initialize serial communication
     Serial.begin(115200);
     pinMode(POWER_BUTTON_PIN, INPUT_PULLUP);
-    // attachInterrupt(digitalPinToInterrupt(powerButtonPin), enterSleep, HIGH);
-    // attachInterrupt(digitalPinToInterrupt(powerButtonPin), a, LOW);
 
     // pinMode(MPU_INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
     ledMatrix.setIntensity(LED_INTENSITY);
     renderFace(SMILEY_FACE);
-
-    // NOTE: 8MHz or slower host processors, like the Teensy @ 3.3V or Arduino
-    // Pro Mini running at 3.3V, cannot handle this baud rate reliably due to
-    // the baud timing being too misaligned with processor ticks. You must use
-    // 38400 or slower in these cases, or use some kind of external separate
-    // crystal solution for the UART timer.
 
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -532,16 +561,29 @@ void renderGesture(Gesture &gesture) {
 }
 
 void playTone() {
-    // louder ton
-    tone(8, activeGesture.type == NONE ? BLINK_END_TONE_FREC : BLINK_START_TONE_FREC, BLINK_TONE_DURATION);
+    tone(TONE_PIN, activeGesture.type == NONE ? BLINK_END_TONE_FREC : BLINK_START_TONE_FREC, BLINK_TONE_DURATION);
 }
 
 void loop() {
     // if programming failed, don't try to do anything
     if (!dmpReady) return;
 
+    // the device was powered up very recently:
+    // block execution for a bit and maybe play a melody
+    if (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
+        renderFace(SMILEY_FACE);
+        if (playPowerUpMelody) {
+            playPowerMelody(true);
+            playPowerUpMelody = false;
+        }
+        while (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
+            delay(20);
+        }
+    }
+
+    // power down
     if (digitalRead(POWER_BUTTON_PIN) == LOW) {
-        enterSleep();
+        powerDown();
     }
 
     renderGesture(activeGesture);
