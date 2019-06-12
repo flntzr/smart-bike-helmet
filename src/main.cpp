@@ -94,7 +94,7 @@ MPU6050 mpu;
 #define MPU_INTERRUPT_PIN 2  // use pin 2 on Arduino Uno & most boards
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define SMOOTHING_SAMPLE_SIZE 12 // The amount of 'roll' values that are remembered for smoothing
-#define WARMUP_LENGTH 100 // the amount of initial measurements that are discarded to the sensor needing to adjust
+#define WARMUP_LENGTH 100 // the amount of initial measurements that are discarded due to the sensor needing to adjust
 #define ACTIVITY_THRESHOLD 0.022 // The minimal absolute delta for a movement to be considered active.
 #define GESTURE_THRESHOLD 0.5 // The threshold for the likelihood to actually register it as a gesture.
 #define MIN_GESTURE_TIME_MS 1000 // the minimum time for a gesture to be detected. Blocks other gesture to be detected.
@@ -441,6 +441,10 @@ float getActivityLikelihood(Queue<float> * q, bool * positive) {
     int beta = 0;
     float totalLikelihood = 0;
     int length = (*q).count();
+    if (length < SMOOTHING_SAMPLE_SIZE) {
+        // the queue isn't full yet and we can't deduce activity of such few samples
+        return 0;
+    }
     float accumulatedDeltas = 0;
     for (int i = 0; i < length; i++) {
         int multiplier = (i+1) * (i+1);
@@ -576,6 +580,7 @@ void loop() {
         // (this lets us immediately read more without waiting for an interrupt)
         fifoCount -= packetSize;
 
+        // discard the first readings
         if (warmupCountdown > 0) {
             warmupCountdown--;
             return;
