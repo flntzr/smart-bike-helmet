@@ -373,8 +373,13 @@ void powerDown() {
     }
     lastPowerDownTime = millis();
     clearMatrix();
+
     // detach the MPU interrupts so MPU readings don't wake us up from sleep
     detachInterrupt(digitalPinToInterrupt(MPU_INTERRUPT_PIN));
+
+    // put MPU to sleep
+    mpu.setSleepEnabled(true);
+
     // instead only accept interrupts from the power button
     attachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN), powerUpISR, LOW);
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
@@ -589,6 +594,10 @@ void loop() {
     // block execution for a bit and maybe play a melody
     if (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
         renderSymbolOnMatrix(SMILEY_FACE);
+        
+        // wake MPU up
+        mpu.setSleepEnabled(false);
+
         if (playPowerUpMelody) {
             playPowerMelody(true);
             playPowerUpMelody = false;
