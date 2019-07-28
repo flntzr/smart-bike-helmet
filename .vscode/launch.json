@@ -12,7 +12,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "/home/franz/Documents/lectures/ic2/smart-bike-helmet/.pioenvs/uno/firmware.elf",
+            "executable": "/home/franz/Documents/lectures/ic2/smart-bike-helmet/.pio/build/nanoatmega328new/firmware.elf",
             "toolchainBinDir": "/home/franz/.platformio/packages/toolchain-atmelavr/bin",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -24,7 +24,7 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "/home/franz/Documents/lectures/ic2/smart-bike-helmet/.pioenvs/uno/firmware.elf",
+            "executable": "/home/franz/Documents/lectures/ic2/smart-bike-helmet/.pio/build/nanoatmega328new/firmware.elf",
             "toolchainBinDir": "/home/franz/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart"
         }
