@@ -314,6 +314,38 @@ void clearMatrix() {
     ledMatrix.commit();
 }
 
+inline String reverseString(String str) {
+    String newStr = String();
+    for (int i = str.length() - 1; i >= 0; i--) {
+        newStr += str.charAt(i);
+    }
+    return newStr;
+}
+
+/**
+ * Renders a number in the range [0,9999] to the matrices.
+ * This is especially useful for showing internal values while debugging on battery mode. 
+ * 
+ * This function is not optimized well and should be used for debugging only. 
+ * It also doesn't account for the number of LED-matrices and just assumes there are 4.
+ */
+void renderNumber(int number) {
+    ledMatrix.clear();
+    if (number > 9999 || number < -999) {
+        // if number out of range: Turn all LED matrices on
+        for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
+            ledMatrix.setColumn(i, 0xFF);
+        }
+        ledMatrix.commit();
+        return;
+    }
+
+    ledMatrix.setText(reverseString(String(number)));
+    ledMatrix.setTextAlignment(TEXT_ALIGN_LEFT);
+    ledMatrix.drawText();
+    ledMatrix.commit();
+}
+
 void renderSymbolOnMatrix(symbol expression) {
     ledMatrix.clear();
     for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
@@ -403,6 +435,7 @@ void setup() {
 
     // pinMode(MPU_INTERRUPT_PIN, OUTPUT);
     ledMatrix.init();
+    ledMatrix.setCharWidth(8);
     ledMatrix.setIntensity(LED_INTENSITY);
     renderSymbolOnMatrix(SMILEY_FACE);
 
