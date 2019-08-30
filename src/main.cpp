@@ -114,6 +114,11 @@ MPU6050 mpu;
 
 #define TONE_PIN 8
 
+#define BATTERY_LEVEL_PIN A1 // The analog input allowing to read the battery level. Is behind a voltage divider as it only supports inputs <= 5V.
+#define BATTERY_MIN_ALLOWED_MILLIVOLTS 5450 // Minimal allowed battery charge: 5,45V. Below that go into low battery mode.
+#define VOLTAGE_DIVIDER_IMPEDANCE_1 10000 // the 1st impedance of the voltage divider (closer to the battery)
+#define VOLTAGE_DIVIDER_IMPEDANCE_2 10000 // the 2nd impedance of the voltage divider (closer to the Arduino's Vin)
+
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
 byte SYMBOLS[4][8] = {
@@ -344,6 +349,11 @@ void renderNumber(int number) {
     ledMatrix.setTextAlignment(TEXT_ALIGN_LEFT);
     ledMatrix.drawText();
     ledMatrix.commit();
+}
+
+void renderBatteryLevel() {
+    int level = analogRead(BATTERY_LEVEL_PIN);
+    renderNumber(level);
 }
 
 void renderSymbolOnMatrix(symbol expression) {
@@ -630,6 +640,7 @@ void loop() {
         
         // wake MPU up
         mpu.setSleepEnabled(false);
+        renderBatteryLevel();
 
         if (playPowerUpMelody) {
             playPowerMelody(true);
