@@ -114,7 +114,7 @@ MPU6050 mpu;
 
 #define TONE_PIN 8
 
-#define BATTERY_CHECK_INTERVAL_S 60 // The interval in seconds in which the battery's level is checked.
+#define BATTERY_CHECK_INTERVAL_MS 60000 // The interval in milliseconds in which the battery's level is checked.
 #define BATTERY_LEVEL_PIN A1 // The analog input allowing to read the battery level. Is behind a voltage divider as it only supports inputs <= 5V.
 #define BATTERY_MIN_ALLOWED_MILLIVOLTS 5400 // Minimal allowed battery charge: 5,4V. Below that go into low battery mode.
 #define VOLTAGE_DIVIDER_IMPEDANCE_1 10000 // the 1st impedance of the voltage divider (closer to the battery)
@@ -133,7 +133,7 @@ MPU6050 mpu;
  * 
  * BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE / 1023 = BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS / 5000mV
  */
-#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE (double) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS / 5000
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE (float) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS / 5000
 /**
  * The voltage readings will differ slightly. Once low battery mode is entered it should not be exited though until the battery is recharged.
  * That means once low battery mode is entered we don't exit the mode until we are above 
@@ -143,7 +143,7 @@ MPU6050 mpu;
 #define BATTERY_LEVEL_TOLERANCE_MILLIVOLTS 300
 #define BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS_WITH_TOLERANCE (((unsigned long)BATTERY_MIN_ALLOWED_MILLIVOLTS + BATTERY_LEVEL_TOLERANCE_MILLIVOLTS) * VOLTAGE_DIVIDER_IMPEDANCE_2) /     \
     (VOLTAGE_DIVIDER_IMPEDANCE_1 + VOLTAGE_DIVIDER_IMPEDANCE_2)
-#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE_WITH_TOLERANCE (double) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS_WITH_TOLERANCE / 5000
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE_WITH_TOLERANCE (float) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS_WITH_TOLERANCE / 5000
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -351,6 +351,7 @@ unsigned long lastPowerDownTime;
 unsigned long lastPowerUpTime;
 bool playPowerUpMelody = false;
 bool isInLowBatteryMode = false;
+unsigned long lastBatteryCheck;
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
@@ -394,16 +395,8 @@ void renderNumber(int number) {
     ledMatrix.commit();
 }
 
-bool isBatteryLow() {
-    Serial.print("Checking battery value: ");
-    Serial.println(BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE);
-    return analogRead(BATTERY_LEVEL_PIN) < BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE;
-}
-
-void renderBatteryLevel() {
-    isBatteryLow();
-    int level = analogRead(BATTERY_LEVEL_PIN);
-    renderNumber(level);
+inline int getBatteryLevel() {
+    return analogRead(BATTERY_LEVEL_PIN);
 }
 
 void renderSymbolOnMatrix(Symbol expression) {
@@ -474,10 +467,30 @@ void powerDown() {
 
     // instead only accept interrupts from the power button
     attachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN), powerUpISR, LOW);
+    delay(100); // For some reason this seems to make the wake up more stable. There seem to be less freezes on wake up.
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
     sleep_mode();
+    // Sleeping.. Continues from here once woken up by the interrupt.
     sleep_disable();
+}
+
+void handleBatteryMode(bool forceCheck) {
+    unsigned long now = millis();
+    if (forceCheck || (lastBatteryCheck + BATTERY_CHECK_INTERVAL_MS) < now) {
+        lastBatteryCheck = now;
+        int batteryLevel = getBatteryLevel();
+        float threshold = isInLowBatteryMode ? BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE_WITH_TOLERANCE : BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE;
+        if (batteryLevel < threshold) {
+            // Display "low battery" symbol, then go into power saving mode.
+            isInLowBatteryMode = true;
+            renderSymbolOnMatrix(BATTERY_LOW);
+            delay(3000);
+            powerDown();
+        } else {
+            isInLowBatteryMode = false;
+        }
+    }
 }
 
 void setup() {
@@ -687,10 +700,9 @@ void loop() {
     // block execution for a bit and maybe play a melody
     if (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
         renderSymbolOnMatrix(SMILEY_FACE);
-        
         // wake MPU up
         mpu.setSleepEnabled(false);
-        renderBatteryLevel();
+        handleBatteryMode(true);
 
         if (playPowerUpMelody) {
             playPowerMelody(true);
@@ -705,6 +717,8 @@ void loop() {
     if (digitalRead(POWER_BUTTON_PIN) == LOW) {
         powerDown();
     }
+
+    handleBatteryMode(false);
 
     renderGesture(activeGesture);
 
