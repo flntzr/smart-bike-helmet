@@ -114,10 +114,36 @@ MPU6050 mpu;
 
 #define TONE_PIN 8
 
+#define BATTERY_CHECK_INTERVAL_S 60 // The interval in seconds in which the battery's level is checked.
 #define BATTERY_LEVEL_PIN A1 // The analog input allowing to read the battery level. Is behind a voltage divider as it only supports inputs <= 5V.
-#define BATTERY_MIN_ALLOWED_MILLIVOLTS 5450 // Minimal allowed battery charge: 5,45V. Below that go into low battery mode.
+#define BATTERY_MIN_ALLOWED_MILLIVOLTS 5400 // Minimal allowed battery charge: 5,4V. Below that go into low battery mode.
 #define VOLTAGE_DIVIDER_IMPEDANCE_1 10000 // the 1st impedance of the voltage divider (closer to the battery)
 #define VOLTAGE_DIVIDER_IMPEDANCE_2 10000 // the 2nd impedance of the voltage divider (closer to the Arduino's Vin)
+/**
+ * Calculates the minimum voltage at the BATTERY_LEVEL_PIN before the device goes into low battery mode.
+ * Uses the following formula for voltage dividers:
+ * U2 = (U1*R2)/(R1+R2)
+ */
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS ((unsigned long) BATTERY_MIN_ALLOWED_MILLIVOLTS * VOLTAGE_DIVIDER_IMPEDANCE_2) /     \
+    (VOLTAGE_DIVIDER_IMPEDANCE_1 + VOLTAGE_DIVIDER_IMPEDANCE_2)
+/**
+ * The minimum value read at the battery level pin before entering low battery mode.
+ * The analog inputs can read up to 5V. It can output 10 bits, meaning 2^10 -> values between 0 and 1023.
+ * Now we need to translate the Voltage into a value in that range:
+ * 
+ * BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE / 1023 = BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS / 5000mV
+ */
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE (double) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS / 5000
+/**
+ * The voltage readings will differ slightly. Once low battery mode is entered it should not be exited though until the battery is recharged.
+ * That means once low battery mode is entered we don't exit the mode until we are above 
+ * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS + BATTERY_LEVEL_TOLERANCE_MILLIVOLTS
+ * e.g. if we have a 5400mV battery and a tolerance of 300mV, we won't exit low battery mode until the battery's voltage is >= 5700mV.
+ */
+#define BATTERY_LEVEL_TOLERANCE_MILLIVOLTS 300
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS_WITH_TOLERANCE (((unsigned long)BATTERY_MIN_ALLOWED_MILLIVOLTS + BATTERY_LEVEL_TOLERANCE_MILLIVOLTS) * VOLTAGE_DIVIDER_IMPEDANCE_2) /     \
+    (VOLTAGE_DIVIDER_IMPEDANCE_1 + VOLTAGE_DIVIDER_IMPEDANCE_2)
+#define BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE_WITH_TOLERANCE (double) 1023 * BATTERY_LEVEL_PIN_MIN_ALLOWED_MILLIVOLTS_WITH_TOLERANCE / 5000
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
@@ -324,6 +350,7 @@ unsigned long lastLedUpdate = 0;
 unsigned long lastPowerDownTime;
 unsigned long lastPowerUpTime;
 bool playPowerUpMelody = false;
+bool isInLowBatteryMode = false;
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
@@ -367,7 +394,14 @@ void renderNumber(int number) {
     ledMatrix.commit();
 }
 
+bool isBatteryLow() {
+    Serial.print("Checking battery value: ");
+    Serial.println(BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE);
+    return analogRead(BATTERY_LEVEL_PIN) < BATTERY_LEVEL_PIN_MIN_ALLOWED_VALUE;
+}
+
 void renderBatteryLevel() {
+    isBatteryLow();
     int level = analogRead(BATTERY_LEVEL_PIN);
     renderNumber(level);
 }
