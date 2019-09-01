@@ -121,7 +121,7 @@ MPU6050 mpu;
 
 const uint8_t NUMBER_OF_LED_COLUMNS = NUMBER_OF_LED_MATRICES * 8; 
 
-byte SYMBOLS[4][8] = {
+byte SYMBOLS[5][8] = {
     // :)
     {
         0b00000000,
@@ -165,7 +165,29 @@ byte SYMBOLS[4][8] = {
         0b00100000,
         0b01111110,
         0b00000000
+    },
+    // low battery
+    {
+        0b00000000,
+        0b00000000,
+        0b11111110,
+        0b10000011,
+        0b10000011,
+        0b11111110,
+        0b00000000,
+        0b00000000
     }
+};
+
+/**
+ * Must be same order as SYMBOLS.
+ */
+enum Symbol {
+    SMILEY_FACE, 
+    NEUTRAL_FACE, 
+    FROWNY_FACE,
+    Z,
+    BATTERY_LOW
 };
 
 byte ARROWS[2][4][8] = {
@@ -273,12 +295,6 @@ struct Gesture {
     direction type;
     unsigned long begin;
 };
-enum symbol {
-    SMILEY_FACE, 
-    NEUTRAL_FACE, 
-    FROWNY_FACE,
-    Z
-};
 
 bool blinkState = false;
 
@@ -356,7 +372,7 @@ void renderBatteryLevel() {
     renderNumber(level);
 }
 
-void renderSymbolOnMatrix(symbol expression) {
+void renderSymbolOnMatrix(Symbol expression) {
     ledMatrix.clear();
     for (int i = 0; i < NUMBER_OF_LED_COLUMNS; i++) {
         ledMatrix.setColumn(i, SYMBOLS[expression][i%8]);
