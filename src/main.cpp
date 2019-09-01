@@ -493,6 +493,21 @@ void handleBatteryMode(bool forceCheck) {
     }
 }
 
+void afterPowerUp() {
+    renderSymbolOnMatrix(SMILEY_FACE);
+    // wake MPU up
+    mpu.setSleepEnabled(false);
+    handleBatteryMode(true);
+
+    if (playPowerUpMelody) {
+        playPowerMelody(true);
+        playPowerUpMelody = false;
+    }
+    while (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
+        delay(20);
+    }
+}
+
 void setup() {
     // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -699,18 +714,7 @@ void loop() {
     // the device was powered up very recently:
     // block execution for a bit and maybe play a melody
     if (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
-        renderSymbolOnMatrix(SMILEY_FACE);
-        // wake MPU up
-        mpu.setSleepEnabled(false);
-        handleBatteryMode(true);
-
-        if (playPowerUpMelody) {
-            playPowerMelody(true);
-            playPowerUpMelody = false;
-        }
-        while (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
-            delay(20);
-        }
+        afterPowerUp();
     }
 
     // power down
