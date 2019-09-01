@@ -349,7 +349,7 @@ unsigned long lastLedUpdate = 0;
 
 unsigned long lastPowerDownTime;
 unsigned long lastPowerUpTime;
-bool playPowerUpMelody = false;
+bool silentPowerUp = true; // If true no sound is played and nothing shown on the LED matrix during power-up.
 bool isInLowBatteryMode = false;
 unsigned long lastBatteryCheck;
 
@@ -437,7 +437,7 @@ void powerUpISR() {
     detachInterrupt(digitalPinToInterrupt(POWER_BUTTON_PIN));
 
     lastPowerUpTime = millis();
-    playPowerUpMelody = true;
+    silentPowerUp = false;
     
     // clear all recognized gestures
     clearGestures();
@@ -449,9 +449,11 @@ void powerUpISR() {
     renderSymbolOnMatrix(SMILEY_FACE);
 }
 
-void powerDown() {
-    renderSymbolOnMatrix(Z);
-    playPowerMelody(false);
+void powerDown(bool silent) {
+    if (!silent) {
+        renderSymbolOnMatrix(Z);
+        playPowerMelody(false);
+    }
     while (digitalRead(POWER_BUTTON_PIN) == LOW) {
         // wait for button to be released
         delay(POWER_BUTTON_DELAY_MS);
@@ -486,7 +488,7 @@ void handleBatteryMode(bool forceCheck) {
             isInLowBatteryMode = true;
             renderSymbolOnMatrix(BATTERY_LOW);
             delay(3000);
-            powerDown();
+            powerDown(false);
         } else {
             isInLowBatteryMode = false;
         }
@@ -494,14 +496,16 @@ void handleBatteryMode(bool forceCheck) {
 }
 
 void afterPowerUp() {
-    renderSymbolOnMatrix(SMILEY_FACE);
     // wake MPU up
     mpu.setSleepEnabled(false);
+
+    // check if battery allows power up
     handleBatteryMode(true);
 
-    if (playPowerUpMelody) {
+    if (!silentPowerUp) {
+        renderSymbolOnMatrix(SMILEY_FACE);
         playPowerMelody(true);
-        playPowerUpMelody = false;
+        silentPowerUp = true;
     }
     while (millis() < lastPowerUpTime + POWER_BUTTON_DELAY_MS) {
         delay(20);
@@ -525,7 +529,7 @@ void setup() {
     ledMatrix.init();
     ledMatrix.setCharWidth(8);
     ledMatrix.setIntensity(LED_INTENSITY);
-    renderSymbolOnMatrix(SMILEY_FACE);
+    // renderSymbolOnMatrix(SMILEY_FACE);
 
     // initialize device
     Serial.println(F("Initializing I2C devices..."));
@@ -719,7 +723,7 @@ void loop() {
 
     // power down
     if (digitalRead(POWER_BUTTON_PIN) == LOW) {
-        powerDown();
+        powerDown(false);
     }
 
     handleBatteryMode(false);
@@ -761,8 +765,13 @@ void loop() {
         fifoCount -= packetSize;
 
         // discard the first readings
-        if (warmupCountdown > 0) {
+        if (warmupCountdown > 1) {
             warmupCountdown--;
+            return;
+        } else if (warmupCountdown == 1) {
+            // Power down after initializing and "warming up" the MPU. 
+            warmupCountdown--;
+            powerDown(true);
             return;
         }
 
